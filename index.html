@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DownFeed — Facebook Video & Photo Downloader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy: #0E1220;
+    --navy-2: #161C30;
+    --panel: #1B2238;
+    --paper: #ECE9E2;
+    --teal: #35D8C4;
+    --teal-dim: #1E8F82;
+    --lavender: #B7A6FF;
+    --line: rgba(236,233,226,0.12);
+    --muted: rgba(236,233,226,0.58);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--navy); color:var(--paper); font-family:'Inter',sans-serif; scroll-behavior:smooth;}
+  body{ overflow-x:hidden; }
+  a{color:inherit;}
+  .mono{font-family:'JetBrains Mono', monospace;}
+
+  /* ---------- Nav ---------- */
+  nav{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:26px 6vw; position:relative; z-index:10;
+  }
+  .logo{
+    font-family:'Fraunces', serif; font-weight:700; font-size:22px; letter-spacing:-0.02em;
+    display:flex; align-items:center; gap:8px;
+  }
+  .logo .dot{width:9px; height:9px; border-radius:50%; background:var(--teal); display:inline-block;}
+  .nav-links{display:flex; gap:36px; font-size:14px; color:var(--muted);}
+  .nav-links span{cursor:default;}
+
+  /* ---------- Hero ---------- */
+  .hero{
+    padding:6vh 6vw 8vh; display:grid; grid-template-columns:1.1fr 1fr; gap:60px; align-items:center;
+    position:relative;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace; font-size:12px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--teal); margin-bottom:22px; display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{content:''; width:22px; height:1px; background:var(--teal);}
+  h1{
+    font-family:'Fraunces', serif; font-weight:600; font-size:clamp(38px,4.6vw,64px);
+    line-height:1.04; letter-spacing:-0.015em; margin-bottom:24px;
+  }
+  h1 em{font-style:italic; color:var(--teal); font-weight:400;}
+  .sub{
+    font-size:17px; line-height:1.65; color:var(--muted); max-width:480px; margin-bottom:38px;
+  }
+
+  /* Paste bar */
+  .paste-bar{
+    display:flex; align-items:center; gap:0; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:6px; max-width:560px; box-shadow:0 20px 60px -20px rgba(0,0,0,0.5);
+  }
+  .paste-bar input{
+    flex:1; background:transparent; border:none; outline:none; color:var(--paper);
+    padding:14px 16px; font-family:'JetBrains Mono', monospace; font-size:14px;
+  }
+  .paste-bar input::placeholder{color:rgba(236,233,226,0.35);}
+  .paste-bar button{
+    background:var(--teal); color:var(--navy); border:none; border-radius:8px; padding:14px 22px;
+    font-weight:600; font-size:14px; cursor:pointer; font-family:'Inter',sans-serif;
+    transition:transform .15s ease, background .15s ease; white-space:nowrap;
+  }
+  .paste-bar button:hover{background:#4EEBD8; transform:translateY(-1px);}
+  .hint{margin-top:14px; font-size:13px; color:var(--muted); display:flex; gap:18px;}
+  .hint b{color:var(--paper); font-weight:500;}
+
+  .result{margin-top:22px; max-width:560px;}
+  .result:empty{display:none;}
+  .result-box{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .result-item{
+    display:flex; align-items:center; justify-content:space-between; background:var(--navy-2);
+    border:1px solid var(--line); border-radius:8px; padding:12px 14px; text-decoration:none; color:var(--paper);
+    transition:border-color .15s ease;
+  }
+  .result-item:hover{border-color:var(--teal);}
+  .result-item .label{font-size:13.5px; font-weight:500;}
+  .result-item .label span{display:block; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); margin-top:2px;}
+  .result-item .go{color:var(--teal); font-family:'JetBrains Mono',monospace; font-size:13px;}
+  .result-error{
+    background:rgba(255,107,107,0.1); border:1px solid rgba(255,107,107,0.35); color:#ffb3b3;
+    border-radius:10px; padding:14px 16px; font-size:13.5px;
+  }
+
+  /* ---------- Signature visual: unwrap mockup ---------- */
+  .mock{
+    position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:22px; min-height:420px; overflow:hidden;
+  }
+  .mock-bar{
+    display:flex; align-items:center; gap:7px; margin-bottom:18px;
+  }
+  .mock-dot{width:9px; height:9px; border-radius:50%; background:rgba(236,233,226,0.18);}
+  .mock-url{
+    flex:1; margin-left:8px; background:var(--navy-2); border-radius:7px; padding:8px 12px;
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--muted);
+  }
+  .mock-post{
+    background:var(--navy-2); border-radius:12px; padding:16px; margin-bottom:16px;
+    border:1px solid var(--line);
+  }
+  .mock-post-head{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
+  .avatar{width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--lavender),var(--teal));}
+  .mock-post-head .lines div{height:7px; border-radius:4px; background:rgba(236,233,226,0.14); margin-bottom:6px;}
+  .mock-post-head .lines div:first-child{width:110px;}
+  .mock-post-head .lines div:last-child{width:70px; height:6px; opacity:0.6;}
+  .media-frame{
+    aspect-ratio:16/9; border-radius:9px; background:linear-gradient(120deg, #23304f, #1a2338 60%);
+    display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
+  }
+  .play-tri{
+    width:0; height:0; border-left:16px solid var(--navy); border-top:10px solid transparent;
+    border-bottom:10px solid transparent; margin-left:4px;
+  }
+  .play-btn{
+    width:52px; height:52px; border-radius:50%; background:var(--teal); display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 8px rgba(53,216,196,0.14);
+  }
+  .unwrap-row{display:flex; gap:10px;}
+  .chip{
+    flex:1; background:var(--navy-2); border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+    display:flex; align-items:center; justify-content:space-between; font-size:12px;
+  }
+  .chip .tag{color:var(--muted);}
+  .chip .dl{color:var(--teal); font-family:'JetBrains Mono',monospace; font-weight:500;}
+  .stream-line{
+    position:absolute; left:50%; top:170px; width:2px; height:0; background:linear-gradient(var(--teal), transparent);
+    transform:translateX(-50%);
+  }
+
+  /* ---------- Steps ---------- */
+  .steps{
+    padding:10vh 6vw; border-top:1px solid var(--line);
+  }
+  .section-head{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:56px; flex-wrap:wrap; gap:16px;}
+  .section-title{font-family:'Fraunces', serif; font-size:clamp(26px,3vw,36px); font-weight:600;}
+  .section-note{color:var(--muted); font-size:14px; max-width:320px; text-align:right;}
+  .step-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:2px; background:var(--line); border:1px solid var(--line); border-radius:14px; overflow:hidden;}
+  .step{background:var(--navy); padding:34px 28px;}
+  .step .num{font-family:'JetBrains Mono',monospace; color:var(--teal-dim); font-size:13px; margin-bottom:22px;}
+  .step h3{font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:10px;}
+  .step p{color:var(--muted); font-size:14.5px; line-height:1.6;}
+
+  /* ---------- Features ---------- */
+  .features{padding:10vh 6vw; border-top:1px solid var(--line); display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border-radius:14px; border:1px solid var(--line); overflow:hidden;}
+  .feature{background:var(--navy); padding:30px 26px;}
+  .feature .ico{color:var(--teal); font-family:'JetBrains Mono',monospace; font-size:12px; margin-bottom:16px; text-transform:uppercase; letter-spacing:0.1em;}
+  .feature h4{font-size:16px; font-weight:600; margin-bottom:8px;}
+  .feature p{color:var(--muted); font-size:13.5px; line-height:1.6;}
+
+  /* ---------- Footer ---------- */
+  footer{padding:5vh 6vw; border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:13px;}
+
+  @media (max-width:900px){
+    .hero{grid-template-columns:1fr;}
+    .step-grid, .features{grid-template-columns:1fr;}
+    .nav-links{display:none;}
+    .section-note{text-align:left;}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important; animation:none !important;}
+  }
+
+  ::selection{background:var(--teal); color:var(--navy);}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo"><span class="dot"></span>DownFeed</div>
+  <div class="nav-links">
+    <span>ভিডিও</span><span>ফটো</span><span>রিলস</span><span>API</span>
+  </div>
+</nav>
+
+<section class="hero">
+  <div>
+    <div class="eyebrow">লিংক পেস্ট করুন, মিডিয়া বের করুন</div>
+    <h1>ফেসবুক পোস্ট থেকে<br><em>ভিডিও ও ছবি</em><br>সরাসরি সেভ করুন</h1>
+    <p class="sub">পাবলিক পোস্ট, রিলস বা ভিডিওর লিংক পেস্ট করলেই DownFeed আসল ফাইলটা খুঁজে বের করে HD কোয়ালিটিতে ডাউনলোডের জন্য রেডি করে দেয় — কোনো অ্যাপ ইনস্টল ছাড়াই।</p>
+    <div class="paste-bar">
+      <input type="text" placeholder="https://www.facebook.com/share/..." class="mono">
+      <button>বের করুন</button>
+    </div>
+    <div class="hint"><span><b>SD ও HD</b> দুই কোয়ালিটি</span><span><b>Photo</b> সাপোর্ট</span><span><b>সাইনআপ লাগে না</b></span></div>
+    <div id="result" class="result"></div>
+  </div>
+
+  <div class="mock">
+    <div class="mock-bar">
+      <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+      <div class="mock-url">facebook.com/share/r/8kD91...</div>
+    </div>
+    <div class="mock-post">
+      <div class="mock-post-head">
+        <div class="avatar"></div>
+        <div class="lines"><div></div><div></div></div>
+      </div>
+      <div class="media-frame">
+        <div class="play-btn"><div class="play-tri"></div></div>
+      </div>
+    </div>
+    <div class="unwrap-row">
+      <div class="chip"><span class="tag">HD · MP4</span><span class="dl">↓ 1080p</span></div>
+      <div class="chip"><span class="tag">SD · MP4</span><span class="dl">↓ 480p</span></div>
+      <div class="chip"><span class="tag">Photo</span><span class="dl">↓ JPG</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="steps">
+  <div class="section-head">
+    <div class="section-title">তিন ধাপেই কাজ শেষ</div>
+    <div class="section-note">কোনো ব্রাউজার এক্সটেনশন বা লগইন লাগে না — শুধু পাবলিক পোস্টের লিংক।</div>
+  </div>
+  <div class="step-grid">
+    <div class="step">
+      <div class="num">০১</div>
+      <h3>লিংক কপি করুন</h3>
+      <p>ফেসবুক অ্যাপ বা ব্রাউজার থেকে যে ভিডিও/ছবির পোস্ট সেভ করতে চান, তার Share লিংক কপি করুন।</p>
+    </div>
+    <div class="step">
+      <div class="num">০২</div>
+      <h3>এখানে পেস্ট করুন</h3>
+      <p>উপরের বক্সে লিংক পেস্ট করে "বের করুন" চাপুন — DownFeed পোস্টটি পড়ে আসল মিডিয়া ফাইল খুঁজে বের করে।</p>
+    </div>
+    <div class="step">
+      <div class="num">০৩</div>
+      <h3>কোয়ালিটি বেছে ডাউনলোড</h3>
+      <p>HD, SD বা ছবি — যেটা দরকার সেই বাটনে চাপ দিলেই ফাইল সরাসরি আপনার ডিভাইসে সেভ হয়ে যাবে।</p>
+    </div>
+  </div>
+</section>
+
+<section class="features">
+  <div class="feature">
+    <div class="ico">০১ · গতি</div>
+    <h4>দ্রুত প্রসেসিং</h4>
+    <p>লিংক পেস্ট করার কয়েক সেকেন্ডের মধ্যেই ডাউনলোড লিংক রেডি হয়ে যায়।</p>
+  </div>
+  <div class="feature">
+    <div class="ico">০২ · কোয়ালিটি</div>
+    <h4>HD সাপোর্ট</h4>
+    <p>যেখানে সম্ভব, সবসময় সর্বোচ্চ রেজুলিউশনের ফাইল দেওয়ার চেষ্টা করে।</p>
+  </div>
+  <div class="feature">
+    <div class="ico">০৩ · প্রাইভেসি</div>
+    <h4>কোনো লগইন নেই</h4>
+    <p>আপনার ফেসবুক অ্যাকাউন্টের সাথে কোনো সংযোগ ছাড়াই শুধু পাবলিক লিংক থেকে কাজ করে।</p>
+  </div>
+  <div class="feature">
+    <div class="ico">০৪ · ডিভাইস</div>
+    <h4>মোবাইল ফ্রেন্ডলি</h4>
+    <p>মোবাইল ব্রাউজার থেকেও ঠিক একইভাবে কাজ করে, আলাদা অ্যাপ লাগে না।</p>
+  </div>
+</section>
+
+<footer>
+  <span>© 2026 DownFeed</span>
+  <span class="mono">শুধুমাত্র পাবলিক পোস্টের জন্য</span>
+</footer>
+
+<script>
+  const btn = document.querySelector('.paste-bar button');
+  const input = document.querySelector('.paste-bar input');
+  const resultEl = document.getElementById('result');
+
+  function renderError(message){
+    resultEl.innerHTML = `<div class="result-error">${message}</div>`;
+  }
+
+  function renderResult(data){
+    const items = [];
+    if(data.hd) items.push({ label:'ভিডিও', sub:'HD কোয়ালিটি', url:data.hd });
+    if(data.sd) items.push({ label:'ভিডিও', sub:'SD কোয়ালিটি', url:data.sd });
+    (data.photos || []).forEach((url, i) => {
+      items.push({ label:`ছবি ${i+1}`, sub:'JPG', url });
+    });
+
+    if(items.length === 0){
+      renderError('কোনো মিডিয়া পাওয়া যায়নি।');
+      return;
+    }
+
+    const rows = items.map(item => `
+      <a class="result-item" href="${item.url}" target="_blank" rel="noopener noreferrer" download>
+        <span class="label">${item.label}<span>${item.sub}</span></span>
+        <span class="go">ডাউনলোড ↓</span>
+      </a>
+    `).join('');
+
+    resultEl.innerHTML = `<div class="result-box">${rows}</div>`;
+  }
+
+  btn.addEventListener('click', () => {
+    const url = input.value.trim();
+    if(!url){ input.focus(); input.style.borderColor = '#ff6b6b'; return; }
+    input.style.borderColor = '';
+    btn.textContent = 'প্রসেসিং...';
+    btn.disabled = true;
+    resultEl.innerHTML = '';
+
+    fetch('/api/extract', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url })
+    })
+    .then(r => r.json().then(data => ({ ok:r.ok, data })))
+    .then(({ ok, data }) => {
+      btn.textContent = 'বের করুন';
+      btn.disabled = false;
+      if(!ok || data.error){ renderError(data.error || 'কিছু একটা সমস্যা হয়েছে।'); return; }
+      renderResult(data);
+    })
+    .catch(() => {
+      btn.textContent = 'বের করুন';
+      btn.disabled = false;
+      renderError('সার্ভারে সংযোগ করা যায়নি। আবার চেষ্টা করুন।');
+    });
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') btn.click();
+  });
+</script>
+
+</body>
+</html>

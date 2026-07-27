@@ -1,19 +1,19 @@
 // DownFeed — Facebook video & photo extractor
 // Node.js 18+ (uses built-in fetch)
+// NOTE: flat structure — index.html and server.js sit in the same folder,
+// so there's no "public/" subfolder to get lost during upload.
 
 const express = require('express');
 const path = require('path');
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
 const MOBILE_UA =
   'Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36';
 
-// Normalize share/reel/watch links to the mbasic host, which serves
-// plain HTML that still contains the raw media URLs in its markup.
 function toMbasicUrl(inputUrl) {
   const u = new URL(inputUrl);
   u.hostname = 'mbasic.facebook.com';
@@ -34,8 +34,6 @@ async function fetchHtml(url) {
   return res.text();
 }
 
-// Facebook embeds quoted, backslash-escaped URLs inside inline JSON
-// blobs on the page (e.g. "hd_src":"https:\/\/video...").
 function unescapeFbUrl(raw) {
   return raw.replace(/\\u0025/g, '%').replace(/\\\//g, '/').replace(/&amp;/g, '&');
 }
@@ -85,6 +83,12 @@ app.post('/api/extract', async (req, res) => {
     console.error(err);
     return res.status(500).json({ error: 'সার্ভারে সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
   }
+});
+
+// Fallback: always serve index.html for the root route, so "Cannot GET /"
+// can't happen even if static serving order ever misbehaves.
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
