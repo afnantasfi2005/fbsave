@@ -14,24 +14,49 @@ const MOBILE_UA =
   'Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36';
 
+const BROWSER_HEADERS = {
+  'User-Agent': MOBILE_UA,
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Upgrade-Insecure-Requests': '1',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Dest': 'document',
+  'Referer': 'https://mbasic.facebook.com/',
+};
+
 function toMbasicUrl(inputUrl) {
   const u = new URL(inputUrl);
   u.hostname = 'mbasic.facebook.com';
+  u.protocol = 'https:';
   return u.toString();
 }
 
-async function fetchHtml(url) {
+async function fetchHtml(url, referer) {
   const res = await fetch(url, {
-    headers: {
-      'User-Agent': MOBILE_UA,
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
+    headers: referer ? { ...BROWSER_HEADERS, Referer: referer } : BROWSER_HEADERS,
     redirect: 'follow',
   });
   if (!res.ok) {
-    throw new Error(`Upstream responded with ${res.status}`);
+    const err = new Error(`Upstream responded with ${res.status}`);
+    err.status = res.status;
+    throw err;
   }
-  return res.text();
+  return { html: await res.text(), finalUrl: res.url };
+}
+
+// "facebook.com/share/..." and "fb.watch/..." links are short redirect
+// links that resolve to the real post URL only on the main www domain —
+// mbasic often 400s on them directly. Resolve on www first, then hand the
+// final canonical URL to mbasic for the actual scrape.
+async function resolveToCanonicalUrl(inputUrl) {
+  if (!/\/share\/|fb\.watch/i.test(inputUrl)) {
+    return inputUrl;
+  }
+  const u = new URL(inputUrl);
+  u.hostname = 'www.facebook.com';
+  u.protocol = 'https:';
+  const { finalUrl } = await fetchHtml(u.toString());
+  return finalUrl;
 }
 
 function unescapeFbUrl(raw) {
@@ -65,8 +90,9 @@ app.post('/api/extract', async (req, res) => {
   }
 
   try {
-    const mbasicUrl = toMbasicUrl(url);
-    const html = await fetchHtml(mbasicUrl);
+    const canonicalUrl = await resolveToCanonicalUrl(url);
+    const mbasicUrl = toMbasicUrl(canonicalUrl);
+    const { html } = await fetchHtml(mbasicUrl, canonicalUrl);
 
     const hd = extractField(html, 'hd_src') || extractField(html, 'playable_url_quality_hd');
     const sd = extractField(html, 'sd_src') || extractField(html, 'playable_url');
@@ -81,7 +107,11 @@ app.post('/api/extract', async (req, res) => {
     return res.json({ hd, sd, photos });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'সার্ভারে সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    const status = err.status;
+    const error = status
+      ? `Facebook থেকে ডেটা আনা যায়নি (কোড ${status})। লিংকটি পাবলিক পোস্টের কিনা যাচাই করুন।`
+      : 'সার্ভারে সমস্যা হয়েছে, আবার চেষ্টা করুন।';
+    return res.status(502).json({ error });
   }
 });
 
