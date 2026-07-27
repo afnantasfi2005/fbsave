@@ -10,6 +10,59 @@ const app = express();
 app.use(express.json());
 app.use(express.static(__dirname));
 
+// ---------------------------------------------------------------------
+// Primary extraction: a third-party RapidAPI service.
+// Why: Facebook actively blocks direct scraping from cloud/datacenter
+// IPs (like Render's) — that's what was causing the earlier 400 errors.
+// This API already handles that problem on their end, so it's far more
+// reliable than us scraping Facebook's HTML directly.
+//
+// Setup: sign up at rapidapi.com, subscribe to "Facebook Audio/Video
+// Downloader" (by mahmudulhasandev) — the free tier is enough to start —
+// then set RAPIDAPI_KEY as an environment variable on Render
+// (Dashboard -> your service -> Environment -> Add Environment Variable).
+// ---------------------------------------------------------------------
+
+const RAPIDAPI_HOST = 'facebook-audio-video-downloader.p.rapidapi.com';
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+
+async function extractViaRapidApi(url) {
+  const endpoint = `https://${RAPIDAPI_HOST}/download?url=${encodeURIComponent(url)}`;
+  const res = await fetch(endpoint, {
+    headers: {
+      'x-rapidapi-host': RAPIDAPI_HOST,
+      'x-rapidapi-key': RAPIDAPI_KEY,
+    },
+  });
+
+  if (!res.ok) {
+    const err = new Error(`RapidAPI responded with ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const data = await res.json();
+  if (data.error) {
+    const err = new Error(data.message || 'RapidAPI reported an error');
+    err.status = 422;
+    throw err;
+  }
+
+  const videoMedias = data.video_medias || [];
+  const hd = videoMedias.find((m) => /hd/i.test(m.quality || ''))?.url || null;
+  const sd = videoMedias.find((m) => /sd/i.test(m.quality || ''))?.url
+    || (!hd ? videoMedias[0]?.url : null)
+    || null;
+
+  return { hd, sd, photos: [] };
+}
+
+// ---------------------------------------------------------------------
+// Fallback / photo support: best-effort scrape of mbasic.facebook.com.
+// This RapidAPI is video/audio-focused, so we still try our own scrape
+// for photo posts, and as a backup if RAPIDAPI_KEY isn't set yet.
+// ---------------------------------------------------------------------
+
 const MOBILE_UA =
   'Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/115.0.0.0 Mobile Safari/537.36';
@@ -44,10 +97,6 @@ async function fetchHtml(url, referer) {
   return { html: await res.text(), finalUrl: res.url };
 }
 
-// "facebook.com/share/..." and "fb.watch/..." links are short redirect
-// links that resolve to the real post URL only on the main www domain —
-// mbasic often 400s on them directly. Resolve on www first, then hand the
-// final canonical URL to mbasic for the actual scrape.
 async function resolveToCanonicalUrl(inputUrl) {
   if (!/\/share\/|fb\.watch/i.test(inputUrl)) {
     return inputUrl;
@@ -79,40 +128,65 @@ function extractPhotos(html) {
   return [...urls];
 }
 
+async function extractViaScrape(url) {
+  const canonicalUrl = await resolveToCanonicalUrl(url);
+  const mbasicUrl = toMbasicUrl(canonicalUrl);
+  const { html } = await fetchHtml(mbasicUrl, canonicalUrl);
+
+  const hd = extractField(html, 'hd_src') || extractField(html, 'playable_url_quality_hd');
+  const sd = extractField(html, 'sd_src') || extractField(html, 'playable_url');
+  const photos = extractPhotos(html);
+
+  return { hd, sd, photos };
+}
+
 app.post('/api/extract', async (req, res) => {
   const { url } = req.body || {};
 
   if (!url || typeof url !== 'string') {
-    return res.status(400).json({ error: 'একটি লিংক দিন।' });
+    return res.status(400).json({ error: 'Please provide a link.' });
   }
   if (!/facebook\.com|fb\.watch/.test(url)) {
-    return res.status(400).json({ error: 'শুধুমাত্র Facebook লিংক সাপোর্ট করা হয়।' });
+    return res.status(400).json({ error: 'Only Facebook links are supported.' });
   }
 
-  try {
-    const canonicalUrl = await resolveToCanonicalUrl(url);
-    const mbasicUrl = toMbasicUrl(canonicalUrl);
-    const { html } = await fetchHtml(mbasicUrl, canonicalUrl);
+  let result = { hd: null, sd: null, photos: [] };
+  let lastError = null;
 
-    const hd = extractField(html, 'hd_src') || extractField(html, 'playable_url_quality_hd');
-    const sd = extractField(html, 'sd_src') || extractField(html, 'playable_url');
-    const photos = extractPhotos(html);
-
-    if (!hd && !sd && photos.length === 0) {
-      return res.status(422).json({
-        error: 'কোনো মিডিয়া খুঁজে পাওয়া যায়নি। পোস্টটি হয়তো প্রাইভেট, অথবা লিংকটি ঠিক নেই।',
-      });
+  if (RAPIDAPI_KEY) {
+    try {
+      result = await extractViaRapidApi(url);
+    } catch (err) {
+      console.error('RapidAPI extraction failed:', err);
+      lastError = err;
     }
+  }
 
-    return res.json({ hd, sd, photos });
-  } catch (err) {
-    console.error(err);
-    const status = err.status;
+  // Try the scrape too -- either as the only method (no API key set yet),
+  // or just to pick up photos the video API doesn't return.
+  if (!RAPIDAPI_KEY || (!result.hd && !result.sd) || result.photos.length === 0) {
+    try {
+      const scraped = await extractViaScrape(url);
+      result = {
+        hd: result.hd || scraped.hd,
+        sd: result.sd || scraped.sd,
+        photos: result.photos.length ? result.photos : scraped.photos,
+      };
+    } catch (err) {
+      console.error('Scrape fallback failed:', err);
+      lastError = lastError || err;
+    }
+  }
+
+  if (!result.hd && !result.sd && result.photos.length === 0) {
+    const status = lastError && lastError.status;
     const error = status
-      ? `Facebook থেকে ডেটা আনা যায়নি (কোড ${status})। লিংকটি পাবলিক পোস্টের কিনা যাচাই করুন।`
-      : 'সার্ভারে সমস্যা হয়েছে, আবার চেষ্টা করুন।';
+      ? `Could not fetch data from Facebook (code ${status}). Check that the link is a public post.`
+      : 'No media found. The post may be private, or the link is incorrect.';
     return res.status(502).json({ error });
   }
+
+  return res.json(result);
 });
 
 // Fallback: always serve index.html for the root route, so "Cannot GET /"
@@ -124,4 +198,7 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`DownFeed server running on http://localhost:${PORT}`);
+  if (!RAPIDAPI_KEY) {
+    console.log('NOTE: RAPIDAPI_KEY is not set -- running on the scrape-only fallback.');
+  }
 });
