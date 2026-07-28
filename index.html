@@ -284,7 +284,7 @@
 
   function renderResult(data){
     const items = [];
-    if(data.hd) items.push({ label:'Video', sub:'HD quality', url:data.hd, filename:'downfeed-video.mp4' });
+    if(data.hd) items.push({ label:'Video', sub:'HD quality', url:data.hd, audio:data.audio, filename:'downfeed-video.mp4' });
     (data.photos || []).forEach((url, i) => {
       items.push({ label:`Photo ${i+1}`, sub:'JPG', url, filename:`downfeed-photo-${i+1}.jpg` });
     });
@@ -295,7 +295,9 @@
     }
 
     const rows = items.map(item => {
-      const proxyUrl = `/api/download?url=${encodeURIComponent(item.url)}&filename=${encodeURIComponent(item.filename)}`;
+      const params = new URLSearchParams({ url: item.url, filename: item.filename });
+      if(item.audio) params.set('audio', item.audio);
+      const proxyUrl = `/api/download?${params.toString()}`;
       return `
       <a class="result-item" href="${proxyUrl}">
         <span class="label">${item.label}<span>${item.sub}</span></span>

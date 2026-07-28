@@ -60,11 +60,12 @@ async function extractViaRapidApi(url) {
   const videos = [...(data.videos || [])].sort(
     (a, b) => resolutionArea(b.resolution) - resolutionArea(a.resolution)
   );
+  const audios = data.audios || [];
 
   const hd = videos[0]?.url || null;
-  const sd = (videos.length > 1 ? videos[1]?.url : null) || null;
+  const audio = audios[0]?.url || null;
 
-  return { hd, sd, photos: [] };
+  return { hd, audio, photos: [] };
 }
 
 // ---------------------------------------------------------------------
@@ -160,7 +161,7 @@ app.post('/api/extract', async (req, res) => {
     return res.status(400).json({ error: 'Only Facebook links are supported.' });
   }
 
-  let result = { hd: null, sd: null, photos: [] };
+  let result = { hd: null, audio: null, photos: [] };
   let lastError = null;
 
   if (RAPIDAPI_KEY) {
@@ -174,12 +175,12 @@ app.post('/api/extract', async (req, res) => {
 
   // Try the scrape too -- either as the only method (no API key set yet),
   // or just to pick up photos the video API doesn't return.
-  if (!RAPIDAPI_KEY || (!result.hd && !result.sd) || result.photos.length === 0) {
+  if (!RAPIDAPI_KEY || !result.hd || result.photos.length === 0) {
     try {
       const scraped = await extractViaScrape(url);
       result = {
         hd: result.hd || scraped.hd,
-        sd: result.sd || scraped.sd,
+        audio: result.audio,
         photos: result.photos.length ? result.photos : scraped.photos,
       };
     } catch (err) {
@@ -188,7 +189,7 @@ app.post('/api/extract', async (req, res) => {
     }
   }
 
-  if (!result.hd && !result.sd && result.photos.length === 0) {
+  if (!result.hd && result.photos.length === 0) {
     const status = lastError && lastError.status;
     const error = status
       ? `Could not fetch data from Facebook (code ${status}). Check that the link is a public post.`
@@ -199,33 +200,114 @@ app.post('/api/extract', async (req, res) => {
   return res.json(result);
 });
 
+const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
+const ffmpegPath = require('ffmpeg-static');
+
+async function downloadToFile(url, filePath) {
+  const upstream = await fetch(url);
+  if (!upstream.ok || !upstream.body) {
+    throw new Error(`Could not fetch ${url} (${upstream.status})`);
+  }
+  await new Promise((resolve, reject) => {
+    const fileStream = fs.createWriteStream(filePath);
+    Readable.fromWeb(upstream.body).pipe(fileStream);
+    fileStream.on('finish', resolve);
+    fileStream.on('error', reject);
+  });
+}
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, args);
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-500)}`));
+    });
+    proc.on('error', reject);
+  });
+}
+
+function safeUnlink(filePath) {
+  fs.unlink(filePath, () => {});
+}
+
 // Proxy download: forces a real download (Content-Disposition: attachment)
-// for cross-origin media URLs. The browser's "download" HTML attribute is
-// ignored for cross-origin links, so without this the video just opens in
-// a new tab instead of saving.
+// for cross-origin media URLs, and — when a separate audio-only stream is
+// given via ?audio= — merges video + audio into one MP4 with ffmpeg before
+// sending it. Facebook/Instagram often serve video and audio as separate
+// DASH streams, so without this the downloaded video has no sound.
 app.get('/api/download', async (req, res) => {
-  const { url, filename } = req.query;
+  const { url, audio, filename } = req.query;
 
   if (!url || typeof url !== 'string') {
     return res.status(400).send('Missing url');
   }
 
-  try {
-    const upstream = await fetch(url);
-    if (!upstream.ok || !upstream.body) {
-      return res.status(502).send('Could not fetch the file.');
+  const safeName = (filename || 'downfeed-video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
+
+  // No separate audio track -- just stream the file straight through.
+  if (!audio || typeof audio !== 'string') {
+    try {
+      const upstream = await fetch(url);
+      if (!upstream.ok || !upstream.body) {
+        return res.status(502).send('Could not fetch the file.');
+      }
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
+      const contentLength = upstream.headers.get('content-length');
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+      Readable.fromWeb(upstream.body).pipe(res);
+    } catch (err) {
+      console.error('Download proxy failed:', err);
+      res.status(502).send('Download failed.');
     }
+    return;
+  }
 
-    const safeName = (filename || 'downfeed-video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
+  // Separate audio track -- download both, mux with ffmpeg, stream the result.
+  const tmpId = crypto.randomBytes(8).toString('hex');
+  const videoPath = path.join(os.tmpdir(), `downfeed-${tmpId}-video.mp4`);
+  const audioPath = path.join(os.tmpdir(), `downfeed-${tmpId}-audio.m4a`);
+  const outPath = path.join(os.tmpdir(), `downfeed-${tmpId}-out.mp4`);
+
+  try {
+    await Promise.all([downloadToFile(url, videoPath), downloadToFile(audio, audioPath)]);
+
+    // -c copy: just repackage the streams together, no re-encoding --
+    // fast and keeps the original quality.
+    await runFfmpeg([
+      '-y',
+      '-i', videoPath,
+      '-i', audioPath,
+      '-c', 'copy',
+      '-map', '0:v:0',
+      '-map', '1:a:0',
+      outPath,
+    ]);
+
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
-    const contentLength = upstream.headers.get('content-length');
-    if (contentLength) res.setHeader('Content-Length', contentLength);
+    res.setHeader('Content-Type', 'video/mp4');
+    const stat = fs.statSync(outPath);
+    res.setHeader('Content-Length', stat.size);
 
-    Readable.fromWeb(upstream.body).pipe(res);
+    const readStream = fs.createReadStream(outPath);
+    readStream.pipe(res);
+    readStream.on('close', () => {
+      safeUnlink(videoPath);
+      safeUnlink(audioPath);
+      safeUnlink(outPath);
+    });
   } catch (err) {
-    console.error('Download proxy failed:', err);
-    res.status(502).send('Download failed.');
+    console.error('Merge download failed:', err);
+    safeUnlink(videoPath);
+    safeUnlink(audioPath);
+    safeUnlink(outPath);
+    res.status(502).send('Could not prepare the video with sound. Please try again.');
   }
 });
 
