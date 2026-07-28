@@ -5,6 +5,7 @@
 
 const express = require('express');
 const path = require('path');
+const { Readable } = require('stream');
 
 const app = express();
 app.use(express.json());
@@ -196,6 +197,36 @@ app.post('/api/extract', async (req, res) => {
   }
 
   return res.json(result);
+});
+
+// Proxy download: forces a real download (Content-Disposition: attachment)
+// for cross-origin media URLs. The browser's "download" HTML attribute is
+// ignored for cross-origin links, so without this the video just opens in
+// a new tab instead of saving.
+app.get('/api/download', async (req, res) => {
+  const { url, filename } = req.query;
+
+  if (!url || typeof url !== 'string') {
+    return res.status(400).send('Missing url');
+  }
+
+  try {
+    const upstream = await fetch(url);
+    if (!upstream.ok || !upstream.body) {
+      return res.status(502).send('Could not fetch the file.');
+    }
+
+    const safeName = (filename || 'downfeed-video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
+    const contentLength = upstream.headers.get('content-length');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+
+    Readable.fromWeb(upstream.body).pipe(res);
+  } catch (err) {
+    console.error('Download proxy failed:', err);
+    res.status(502).send('Download failed.');
+  }
 });
 
 // Fallback: always serve index.html for the root route, so "Cannot GET /"

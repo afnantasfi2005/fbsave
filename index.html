@@ -196,7 +196,7 @@
       <input type="text" placeholder="https://www.facebook.com/share/..." class="mono">
       <button>Extract</button>
     </div>
-    <div class="hint"><span><b>SD & HD</b> quality</span><span><b>Photo</b> support</span><span><b>No sign-up</b> needed</span></div>
+    <div class="hint"><span><b>HD</b> quality</span><span><b>Photo</b> support</span><span><b>No sign-up</b> needed</span></div>
     <div id="result" class="result"></div>
   </div>
 
@@ -216,7 +216,6 @@
     </div>
     <div class="unwrap-row">
       <div class="chip"><span class="tag">HD · MP4</span><span class="dl">↓ 1080p</span></div>
-      <div class="chip"><span class="tag">SD · MP4</span><span class="dl">↓ 480p</span></div>
       <div class="chip"><span class="tag">Photo</span><span class="dl">↓ JPG</span></div>
     </div>
   </div>
@@ -285,10 +284,9 @@
 
   function renderResult(data){
     const items = [];
-    if(data.hd) items.push({ label:'Video', sub:'HD quality', url:data.hd });
-    if(data.sd) items.push({ label:'Video', sub:'SD quality', url:data.sd });
+    if(data.hd) items.push({ label:'Video', sub:'HD quality', url:data.hd, filename:'downfeed-video.mp4' });
     (data.photos || []).forEach((url, i) => {
-      items.push({ label:`Photo ${i+1}`, sub:'JPG', url });
+      items.push({ label:`Photo ${i+1}`, sub:'JPG', url, filename:`downfeed-photo-${i+1}.jpg` });
     });
 
     if(items.length === 0){
@@ -296,12 +294,15 @@
       return;
     }
 
-    const rows = items.map(item => `
-      <a class="result-item" href="${item.url}" target="_blank" rel="noopener noreferrer" download>
+    const rows = items.map(item => {
+      const proxyUrl = `/api/download?url=${encodeURIComponent(item.url)}&filename=${encodeURIComponent(item.filename)}`;
+      return `
+      <a class="result-item" href="${proxyUrl}">
         <span class="label">${item.label}<span>${item.sub}</span></span>
         <span class="go">Download ↓</span>
       </a>
-    `).join('');
+    `;
+    }).join('');
 
     resultEl.innerHTML = `<div class="result-box">${rows}</div>`;
   }
