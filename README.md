@@ -7,15 +7,15 @@
 - ছবি (Photo) বের করার জন্য এখনো আগের mbasic স্ক্র্যাপার ব্যাকআপ হিসেবে আছে।
 - RapidAPI key সেট না করা থাকলে সাইট আপনাআপনি পুরোনো স্ক্র্যাপার দিয়েই চালানোর চেষ্টা করবে, ভাঙবে না।
 
-## RapidAPI Key সেটআপ (৩ মিনিট লাগবে)
-1. [rapidapi.com](https://rapidapi.com)-এ গিয়ে ফ্রি অ্যাকাউন্ট বানান।
-2. এই API-টা খুঁজুন: **"Facebook Audio/Video Downloader"** (developer: mahmudulhasandev)। সরাসরি লিংক: `https://rapidapi.com/mahmudulhasandev/api/facebook-audio-video-downloader`
-3. পেজে "Subscribe to Test" চাপুন, **Basic/Free** প্ল্যান বেছে নিন (কার্ড লাগতে পারে ভেরিফিকেশনের জন্য, কিন্তু ফ্রি টায়ারে চার্জ হবে না)।
-4. সাবস্ক্রাইব করার পর ডানপাশে **"X-RapidAPI-Key"** নামে একটা লম্বা কোড দেখবেন — সেটা কপি করুন।
-5. এবার Render ড্যাশবোর্ডে আপনার **fbsave** সার্ভিসে যান → বাম সাইডবারে **Environment** → **Add Environment Variable**:
+## RapidAPI Key সেটআপ
+এই প্রজেক্টে **"All In One Video Downloader"** (rapidapi.com) ব্যবহার করা হচ্ছে — Facebook সহ একাধিক প্ল্যাটফর্ম সাপোর্ট করে, এবং এর ফ্রি প্ল্যান সরাসরি সাবস্ক্রাইব করা যায় (কোনো manual approval লাগে না)।
+
+1. [rapidapi.com](https://rapidapi.com)-এ অ্যাকাউন্ট বানান, তারপর এই API-টা সার্চ করে বের করুন এবং Free প্ল্যানে Subscribe করুন।
+2. Subscribe করার পর ডানপাশের কোড স্নিপেটে **"X-RapidAPI-Key"** এর পাশের লম্বা কোডটা কপি করুন।
+3. Render ড্যাশবোর্ডে **fbsave** সার্ভিসে যান → বাম সাইডবারে **Environment** → **Add Environment Variable**:
    - Key: `RAPIDAPI_KEY`
-   - Value: (৪ নম্বরে কপি করা কোডটা পেস্ট করুন)
-6. Save করুন — Render নিজে থেকেই নতুন এই ভ্যারিয়েবল নিয়ে সার্ভিস রিস্টার্ট করবে।
+   - Value: (কপি করা কোডটা পেস্ট করুন)
+4. Save করুন — Render নিজে থেকেই নতুন ভ্যারিয়েবল নিয়ে সার্ভিস রিস্টার্ট করবে।
 
 ## GitHub রিপো ঠিক করার ধাপ
 1. আপনার GitHub রিপোতে (`fbsave`) যান।

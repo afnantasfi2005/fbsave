@@ -23,8 +23,16 @@ app.use(express.static(__dirname));
 // (Dashboard -> your service -> Environment -> Add Environment Variable).
 // ---------------------------------------------------------------------
 
-const RAPIDAPI_HOST = 'facebook-audio-video-downloader.p.rapidapi.com';
+const RAPIDAPI_HOST = 'all-in-one-video-downloader1.p.rapidapi.com';
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+
+// Response shape from this API: { videos: [{ resolution: "720x1280", url, ext, ... }, ...] }
+// Rank by pixel area so the biggest resolution becomes "hd" and the next becomes "sd".
+function resolutionArea(resolution) {
+  if (!resolution) return 0;
+  const [w, h] = resolution.split('x').map(Number);
+  return (w || 0) * (h || 0);
+}
 
 async function extractViaRapidApi(url) {
   const endpoint = `https://${RAPIDAPI_HOST}/download?url=${encodeURIComponent(url)}`;
@@ -48,11 +56,12 @@ async function extractViaRapidApi(url) {
     throw err;
   }
 
-  const videoMedias = data.video_medias || [];
-  const hd = videoMedias.find((m) => /hd/i.test(m.quality || ''))?.url || null;
-  const sd = videoMedias.find((m) => /sd/i.test(m.quality || ''))?.url
-    || (!hd ? videoMedias[0]?.url : null)
-    || null;
+  const videos = [...(data.videos || [])].sort(
+    (a, b) => resolutionArea(b.resolution) - resolutionArea(a.resolution)
+  );
+
+  const hd = videos[0]?.url || null;
+  const sd = (videos.length > 1 ? videos[1]?.url : null) || null;
 
   return { hd, sd, photos: [] };
 }
